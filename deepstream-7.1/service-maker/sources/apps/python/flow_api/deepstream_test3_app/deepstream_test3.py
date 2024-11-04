@@ -1,0 +1,57 @@
+#
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+from pyservicemaker import Pipeline, Flow, BatchMetadataOperator, Probe, osd
+import sys
+
+CONFIG_FILE_PATH = "/opt/nvidia/deepstream/deepstream/sources/apps/sample_apps/deepstream-test3/dstest3_pgie_config.yml"
+
+class ObjectCounterMarker(BatchMetadataOperator):
+    def handle_metadata(self, batch_meta):
+        for frame_meta in batch_meta.frame_items:
+            vehcle_count = 0
+            person_count = 0
+            for object_meta in frame_meta.object_items:
+                class_id = object_meta.class_id
+                if class_id == 0:
+                    vehcle_count += 1
+                elif class_id == 2:
+                    person_count += 1
+            print(f"Object Counter: Pad Idx={frame_meta.pad_index},"
+                  f"Frame Number={frame_meta.frame_number},"
+                  f"Vehicle Count={vehcle_count}, Person Count={person_count}")
+            text = f"Person={person_count},Vehicle={vehcle_count}"
+            display_meta = batch_meta.acquire_display_meta()
+            label = osd.Text()
+            label.display_text = text.encode('ascii')
+            label.x_offset = 10
+            label.y_offset = 12
+            label.font.name = osd.FontFamily.Serif
+            label.font.size = 12
+            label.font.color = osd.Color(1.0, 1.0, 1.0, 1.0)
+            label.set_bg_color = True
+            label.bg_color = osd.Color(0.0, 0.0, 0.0, 1.0)
+            display_meta.add_text(label)
+            frame_meta.append(display_meta)
+
+def deepstream_test3_app(stream_file_path_list):
+    pipeline = Pipeline("deepstream-test3")
+    flow = Flow(pipeline).batch_capture(stream_file_path_list).infer(CONFIG_FILE_PATH)
+    flow.attach(what=Probe("counter", ObjectCounterMarker())).render()()
+
+if __name__ == '__main__':
+    # Check input arguments
+    if len(sys.argv) < 2:
+        sys.stderr.write("usage: %s <uri1> [uri2] ... [uriN]\n" % sys.argv[0])
+        sys.exit(1)
+
+    deepstream_test3_app(sys.argv[1:])
